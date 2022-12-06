@@ -42,6 +42,7 @@ def run_yaml_experiment(yaml_path, just_cache_data, do_test):
   list_dataset = yaml_args['dataset']
   
   regimen_model = yaml_args['regimen']
+  reporter_model = yaml_args['reporter']
   cache_model = yaml_args['cache']
 
   dshap_com = yaml_args['dshap_com']
@@ -50,6 +51,11 @@ def run_yaml_experiment(yaml_path, just_cache_data, do_test):
   # Make results directory
   os.makedirs(regimen_model.reporting_root, exist_ok=True)
 
+  # Make dataloaders and load data
+  train_dataloader = list_dataset.get_train_dataloader(shuffle=False)
+  dev_dataloader = list_dataset.get_dev_dataloader(shuffle=False)
+  if do_test:
+    test_dataloader = list_dataset.get_test_dataloader(shuffle=False)
   cache_model.release_locks()
 
   if just_cache_data:
@@ -58,9 +64,9 @@ def run_yaml_experiment(yaml_path, just_cache_data, do_test):
 
   # sample a set of data points to conduct data valuation
   np.random.seed(10)
-  sample_num = 500
+  sample_num = 2
   val_sample_num = 300
-  tmc_iterations = 500
+  tmc_iterations = 1
   
   train_num = list_dataset.train_num
   val_num = list_dataset.dev_num
