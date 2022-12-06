@@ -1,5 +1,4 @@
-torch
-allennlp==1.0.0
+allennlp==1.2.0
 stanza
 tqdm
 transformers

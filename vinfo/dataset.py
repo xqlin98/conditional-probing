@@ -4,13 +4,14 @@ import h5py
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, IterableDataset, DataLoader
+from torch.utils.data.sampler import SubsetRandomSampler
 import Levenshtein as levenshtein
 
 from tqdm import tqdm
 from yaml import YAMLObject
 from transformers import AutoTokenizer, AutoModel
 from allennlp.modules.elmo import batch_to_ids
-
+import pandas as pd
 from utils import TRAIN_STR, DEV_STR, TEST_STR, InitYAMLObject
 
 BATCH_SIZE = 50
@@ -70,6 +71,7 @@ class ListDataset(Dataset, InitYAMLObject):
       self.train_data = list(self.load_data(TRAIN_STR))
       #generator = IterableDatasetWrapper(self.load_data(TRAIN_STR))
     generator = IterableDatasetWrapper(self.train_data)
+    self.train_num = len(generator)
     return DataLoader(generator, batch_size=BATCH_SIZE, shuffle=shuffle, collate_fn=self.collate_fn)
 
   def get_dev_dataloader(self, shuffle=False):
@@ -79,6 +81,7 @@ class ListDataset(Dataset, InitYAMLObject):
       self.dev_data = list(self.load_data(DEV_STR))
       #generator = IterableDatasetWrapper(self.load_data(DEV_STR))
     generator = IterableDatasetWrapper(self.dev_data)
+    self.dev_num = len(generator)
     return DataLoader(generator, batch_size=BATCH_SIZE, shuffle=shuffle, collate_fn=self.collate_fn)
 
   def get_test_dataloader(self, shuffle=False):
@@ -90,6 +93,19 @@ class ListDataset(Dataset, InitYAMLObject):
     generator = IterableDatasetWrapper(self.test_data)
     return DataLoader(generator, batch_size=BATCH_SIZE, shuffle=shuffle, collate_fn=self.collate_fn)
 
+  def get_idx_dataloader(self, idxs, split="train"):
+    if split == "train":
+      if self.train_data is None:
+        self.train_data = list(self.load_data(TRAIN_STR))
+      generator = IterableDatasetWrapper(self.train_data)
+      bath_size = BATCH_SIZE
+    elif split == "val":
+      if self.dev_data is None:
+        self.dev_data = list(self.load_data(DEV_STR))
+      generator = IterableDatasetWrapper(self.dev_data)
+      bath_size = 2 * BATCH_SIZE
+    return DataLoader(generator, batch_size=bath_size, shuffle=False, collate_fn=self.collate_fn, sampler=SubsetRandomSampler(idxs))
+    
   def load_data(self, split_string):
     """Loads data from disk into RAM tensors for passing to a network on GPU
 
@@ -103,6 +119,10 @@ class ListDataset(Dataset, InitYAMLObject):
       output_tensor = self.output_dataset.tensor_of_sentence(sentence, split_string)
       yield (input_tensors, output_tensor, sentence)
 
+  # def load_raw_idxed_data(self, idxs, split):
+    
+    
+    
   def collate_fn(self, observation_list):
     """
     Combines observations (input_tensors, output_tensor, sentence) tuples
@@ -527,6 +547,22 @@ class SST2Reader(Loader):
       indices = [str(i) for i, _ in enumerate(word_tokens)]
       label_tokens = [label_string for _ in word_tokens]
       yield list(zip(indices, word_tokens, label_tokens))
+
+  def sentence_raw_idx_extractor(self, idxs):
+    raw_sentences = []
+    labels = []
+    idxs_set = set(idxs)
+    with open(self.train_path) as sst2_stream:
+      _ = next(sst2_stream) # Get rid of the column labels 
+      for idx, line in enumerate(sst2_stream):
+        if idx in idxs_set:
+          word_string, label_string = [x.strip() for x in line.split('\t')]
+          raw_sentences.append(word_string)
+          labels.append(label_string)
+        else:
+          pass
+    result_table = pd.DataFrame({"sentence": raw_sentences, "label": labels})
+    return result_table
 
   def yield_dataset(self, split_string):
     """

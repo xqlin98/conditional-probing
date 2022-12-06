@@ -1,6 +1,8 @@
+import pickle
 import yaml as yaml
 import torch
 import torch.nn as nn
+from torch.utils.data.sampler import SubsetRandomSampler
 import sys
 import click
 import os
@@ -24,6 +26,7 @@ from probe    import *
 from trainer  import * 
 from reporter import * 
 from utils import *
+from dvutils.Data_Shapley import *
 
 @click.command()
 @click.argument('yaml_path')
@@ -37,57 +40,51 @@ def run_yaml_experiment(yaml_path, just_cache_data, do_test):
   # Take constructed classes from yaml
   yaml_args = yaml.load(open(yaml_path), Loader=yaml.Loader)
   list_dataset = yaml_args['dataset']
-  list_model = yaml_args['model']
-  probe_model = yaml_args['probe']
+  
   regimen_model = yaml_args['regimen']
-  reporter_model = yaml_args['reporter']
   cache_model = yaml_args['cache']
 
+  dshap_com = yaml_args['dshap_com']
+  dshap_sing = yaml_args['dshap_sing']
+  
   # Make results directory
   os.makedirs(regimen_model.reporting_root, exist_ok=True)
 
-  # Make dataloaders and load data
-  train_dataloader = list_dataset.get_train_dataloader(shuffle=True)
-  dev_dataloader = list_dataset.get_dev_dataloader(shuffle=False)
-  if do_test:
-    test_dataloader = list_dataset.get_test_dataloader(shuffle=False)
   cache_model.release_locks()
 
   if just_cache_data:
     print("Data caching done. Exiting...")
     return
 
-  # Train probe
-  regimen_model.train_until_convergence(probe_model, list_model
-      , None, train_dataloader, dev_dataloader
-      , gradient_steps_between_eval=min(1000,len(train_dataloader)))
-
-  # Train probe with finetuning
-  #regimen_model.train_until_convergence(probe_model, list_model
-  #    , None, train_dataloader, dev_dataloader
-  #    , gradient_steps_between_eval=1000, finetune=True)
-
-  # Load best probe from disk
-  probe_model.load_state_dict(torch.load(regimen_model.params_path))
-  #list_model.load_state_dict(torch.load(regimen_model.params_path + '.model'))
-
-  # Make dataloaders and predict
-  train_dataloader = list_dataset.get_train_dataloader(shuffle=False)
-  dev_dataloader = list_dataset.get_dev_dataloader(shuffle=False)
-  dev_predictions = regimen_model.predict(probe_model, list_model, dev_dataloader)
-  train_predictions = regimen_model.predict(probe_model, list_model, train_dataloader)
-  if do_test:
-    test_dataloader = list_dataset.get_test_dataloader(shuffle=False)
-    test_predictions = regimen_model.predict(probe_model, list_model, test_dataloader)
+  # sample a set of data points to conduct data valuation
+  np.random.seed(10)
+  sample_num = 500
+  val_sample_num = 300
+  tmc_iterations = 500
   
-  # Make dataloaders and report
-  train_dataloader = list_dataset.get_train_dataloader(shuffle=False)
-  dev_dataloader = list_dataset.get_dev_dataloader(shuffle=False)
-  reporter_model(train_predictions, train_dataloader, TRAIN_STR)
-  reporter_model(dev_predictions, dev_dataloader, DEV_STR)
-  if do_test:
-    test_dataloader = list_dataset.get_test_dataloader(shuffle=False)
-    reporter_model(test_predictions, test_dataloader, TEST_STR)
+  train_num = list_dataset.train_num
+  val_num = list_dataset.dev_num
+  sampled_idx = np.random.choice(np.arange(train_num), sample_num, replace=False).tolist()
+  sampled_val_idx = np.random.choice(np.arange(val_num), val_sample_num, replace=False).tolist()
+  
+  # data Shapley with pretrained embedding + layer 0 embedding
+  dshap_value_com = dshap_com.run(data_idx=sampled_idx, val_data_idx=sampled_val_idx, iteration=tmc_iterations)
+
+  # data Shapley with layer 0 embedding only
+  dshap_value_sing = dshap_sing.run(data_idx=sampled_idx, val_data_idx=sampled_val_idx, iteration=tmc_iterations)
+  
+  cond_dshap_value = dshap_value_com - dshap_value_sing
+  # record the result
+  result_dict = {'dshap_value_com': dshap_value_com,
+                 'dshap_value_sing': dshap_value_sing,
+                 'cond_dshap_value': cond_dshap_value,
+                 'sampled_idx': sampled_idx}
+  raw_selected_data = list_dataset.data_loader.sentence_raw_idx_extractor(sampled_idx)
+  
+  # record the raw data input for inspection
+  raw_selected_data.to_csv(os.path.join(regimen_model.reporting_root, 'raw_selected_data.csv'),index=False)
+  with open(os.path.join(regimen_model.reporting_root, 'result_dict.pickle'), 'wb') as handle:
+      pickle.dump(result_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
   run_yaml_experiment()

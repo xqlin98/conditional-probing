@@ -1,0 +1,109 @@
+input_fields: &id_input_fields
+  - index
+  - token
+  - label
+
+cache: &id_cache !WholeDatasetCache
+  train_path: &idtrainpath  data/sst2-train.tsv
+  dev_path: &iddevpath      data/sst2-dev.tsv
+  test_path: &idtestpath    data/sst2-test.tsv
+
+
+disk_reader: !SST2Reader &id_disk_reader
+  args: 
+    - device: cuda:0
+  train_path: *idtrainpath 
+  dev_path: *iddevpath     
+  test_path: *idtestpath   
+  cache: *id_cache
+
+dataset: !ListDataset &id_dataset
+  args: 
+    device: cuda:0
+  data_loader: *id_disk_reader
+  output_dataset: !AnnotationDataset
+    args: 
+      device: cuda:0
+    task: !SentenceClassificationTask
+      args: 
+        device: cuda:0
+      task_name: SST
+  input_datasets:
+        - !HuggingfaceData
+          args:
+            device: cuda:0
+          model_string: &model1string roberta-base
+          cache: *id_cache
+        - !HuggingfaceData
+          args:
+            device: cuda:0
+          model_string: &model2string roberta-base
+          cache: *id_cache
+
+model_com: !ListModel &id_model_com
+  args: 
+    device: cuda:0
+  models:
+   - !HuggingfaceModel
+       args:
+         device: cuda:0
+       model_string: *model1string
+       trainable: False
+       index: 0
+   - !HuggingfaceModel
+       args:
+         device: cuda:0
+       model_string: *model2string
+       trainable: False
+       index: 12
+
+model_sing: !ListModel &id_model_sing
+  args: 
+    device: cuda:0
+  models:
+   - !HuggingfaceModel
+       args:
+         device: cuda:0
+       model_string: *model1string
+       trainable: False
+       index: 0
+
+probe_com: !SentenceLinearLabelProbe &id_probe_com
+  args:
+    device: cuda:0
+  model_dim: 1536
+  label_space_size: 3
+
+probe_sing: !SentenceLinearLabelProbe &id_probe_sing
+  args:
+    device: cuda:0
+  model_dim: 768
+  label_space_size: 3
+
+regimen: !ProbeRegimen &id_regimen
+  args:
+    device: cuda:0
+  max_epochs: 30
+  params_path: params
+  reporting_root: &id_reporting_root configs/dshap/layer0-0.yaml.results
+
+reporter: !IndependentLabelReporter &id_reporter
+  args:
+    device: cuda:0
+  reporting_root: *id_reporting_root
+  reporting_methods:
+    - v_entropy
+
+dshap_sing: !Data_Shapley
+  dataset: *id_dataset
+  train_process: *id_regimen
+  probe_model: *id_probe_sing
+  list_model: *id_model_sing
+  reporter: *id_reporter
+
+dshap_com: !Data_Shapley
+  dataset: *id_dataset
+  train_process: *id_regimen
+  probe_model: *id_probe_com
+  list_model: *id_model_com
+  reporter: *id_reporter

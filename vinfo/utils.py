@@ -3,7 +3,6 @@ Utilities for determining file locations or names
 from the configuration specification
 """
 from yaml import YAMLObject
-
 IGNORE_LABEL_INDEX = -100
 TRAIN_STR = 'train'
 DEV_STR = 'dev'

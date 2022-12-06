@@ -45,12 +45,13 @@ class Reporter(InitYAMLObject):
     for method in self.reporting_methods:
       if method in self.reporting_method_dict:
         if split_name == 'test' and method not in self.test_reporting_constraint:
-          tqdm.write("Reporting method {} not in test set reporting "
-              "methods (reporter.py); skipping".format(method))
+          # tqdm.write("Reporting method {} not in test set reporting "
+          #     "methods (reporter.py); skipping".format(method))
           continue
-        tqdm.write("Reporting {} on split {}".format(method, split_name))
-        self.reporting_method_dict[method](prediction_batches
+        # tqdm.write("Reporting {} on split {}".format(method, split_name))
+        result = self.reporting_method_dict[method](prediction_batches
             , dataloader, split_name)
+        return result
       else:
         tqdm.write('[WARNING] Reporting method not known: {}; skipping'.format(method))
 
@@ -99,9 +100,9 @@ class IndependentLabelReporter(Reporter):
       total_labels = torch.sum((label_batch != 0).long())
       total += total_labels.cpu().numpy()
       correct += total_agreements.cpu().numpy()
-
-    with open(os.path.join(self.reporting_root, split_name + '.label_acc'), 'w') as fout:
-      fout.write(str(float(correct)/  total) + '\n')
+      return float(correct)/  total
+    # with open(os.path.join(self.reporting_root, split_name + '.label_acc'), 'w') as fout:
+    #   fout.write(str(float(correct)/  total) + '\n')
 
   def report_v_entropy(self, prediction_batches, dataset, split_name):
     total_label_count = 0
@@ -123,9 +124,9 @@ class IndependentLabelReporter(Reporter):
 
       total_label_count += batch_label_count
       neg_logprob_sum += batch_neg_logprob_sum
-
-    with open(os.path.join(self.reporting_root, split_name + '.v_entropy'), 'w') as fout:
-      fout.write(str(float(neg_logprob_sum)/float(total_label_count)) + '\n')
+    return float(neg_logprob_sum)/float(total_label_count)
+    # with open(os.path.join(self.reporting_root, split_name + '.v_entropy'), 'w') as fout:
+    #   fout.write(str(float(neg_logprob_sum)/float(total_label_count)) + '\n')
 
 class NERReporter(IndependentLabelReporter):
   """ Class for reporting metrics on the Named Entity Recognition task.

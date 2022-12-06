@@ -11,7 +11,7 @@ cache: &id_cache !WholeDatasetCache
 
 disk_reader: !SST2Reader &id_disk_reader
   args: 
-    - device: cuda:0
+    - device: cuda:3
   train_path: *idtrainpath 
   dev_path: *iddevpath     
   test_path: *idtestpath   
@@ -19,49 +19,49 @@ disk_reader: !SST2Reader &id_disk_reader
 
 dataset: !ListDataset
   args: 
-    device: cuda:0
+    device: cuda:3
   data_loader: *id_disk_reader
   output_dataset: !AnnotationDataset
     args: 
-      device: cuda:0
+      device: cuda:3
     task: !SentenceClassificationTask
       args: 
-        device: cuda:0
+        device: cuda:3
       task_name: SST
   input_datasets:
         - !HuggingfaceData
           args:
-            device: cuda:0
+            device: cuda:3
           model_string: &model1string roberta-base
           cache: *id_cache
 
 model: !ListModel
   args: 
-    device: cuda:0
+    device: cuda:3
   models:
    - !HuggingfaceModel
        args:
-         device: cuda:0
+         device: cuda:3
        model_string: *model1string
        trainable: False
        index: 0
     
 probe: !SentenceLinearLabelProbe
   args:
-    device: cuda:0
+    device: cuda:3
   model_dim: 768
   label_space_size: 3
 
 regimen: !ProbeRegimen
   args:
-    device: cuda:0
+    device: cuda:3
   max_epochs: 50
   params_path: params
   reporting_root: &id_reporting_root configs/round1/sst2/roberta768/layer0.yaml.results
 
 reporter: !IndependentLabelReporter
   args:
-    device: cuda:0
+    device: cuda:3
   reporting_root: *id_reporting_root
   reporting_methods:
     - label_accuracy
